@@ -61,7 +61,7 @@ function Write-Log {
     Add-Content -Path $logPath -Value $line
 }
 
-function Ensure-Admin {
+function Confirm-Admin {
     $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
     $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -124,14 +124,14 @@ function Remove-DisableTaskMgrValue {
     }
 }
 
-function Ensure-RegistryPath {
+function Initialize-RegistryPath {
     param([string]$Path)
     if (-not (Test-Path -Path $Path)) {
         New-Item -Path $Path -Force | Out-Null
     }
 }
 
-function Process-UserHivePolicy {
+function Invoke-UserHivePolicy {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Sid,
@@ -165,7 +165,7 @@ function Process-UserHivePolicy {
         Backup-RegistryPath -RegistryPath $policyPath -DestinationFile (Join-Path $BackupDir "$Sid-Policies-System.reg")
         Backup-RegistryPath -RegistryPath $tmPath -DestinationFile (Join-Path $BackupDir "$Sid-TaskManager.reg")
 
-        Ensure-RegistryPath -Path $policyPath
+        Initialize-RegistryPath -Path $policyPath
         Remove-DisableTaskMgrValue -PolicyPath $policyPath
 
         if (Test-Path -Path $tmPath) {
@@ -317,7 +317,7 @@ function Invoke-TaskManagerPolicyAudit {
     Write-Log 'Task Manager policy audit completed.'
 }
 
-Ensure-Admin
+Confirm-Admin
 $backupDir = New-BackupDirectory
 Write-Log "Started repair. Log: $logPath"
 Write-Log "Backup directory: $backupDir"
@@ -328,9 +328,9 @@ $machinePolicyWow = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion
 $currentUserPolicy = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System'
 $currentUserTaskManager = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager'
 
-Ensure-RegistryPath -Path $machinePolicy
-Ensure-RegistryPath -Path $machinePolicyWow
-Ensure-RegistryPath -Path $currentUserPolicy
+Initialize-RegistryPath -Path $machinePolicy
+Initialize-RegistryPath -Path $machinePolicyWow
+Initialize-RegistryPath -Path $currentUserPolicy
 
 Backup-RegistryPath -RegistryPath $machinePolicy -DestinationFile (Join-Path $backupDir 'HKLM-Policies-System.reg')
 Backup-RegistryPath -RegistryPath $machinePolicyWow -DestinationFile (Join-Path $backupDir 'HKLM-WOW6432Node-Policies-System.reg')
@@ -351,7 +351,7 @@ else {
 
 # Process all local user profiles so non-admin accounts are corrected too.
 $profileListPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
-$profileEntries = Get-ChildItem -Path $profileListPath | ForEach-Object {
+$profileEntries = @(Get-ChildItem -Path $profileListPath | ForEach-Object {
     $rawProfilePath = (Get-ItemProperty -Path $_.PSPath -Name ProfileImagePath -ErrorAction SilentlyContinue).ProfileImagePath
     $expandedProfilePath = if ($rawProfilePath) {
         [Environment]::ExpandEnvironmentVariables($rawProfilePath)
@@ -365,18 +365,18 @@ $profileEntries = Get-ChildItem -Path $profileListPath | ForEach-Object {
         RawProfilePath = $rawProfilePath
         ProfilePath = $expandedProfilePath
     }
-}
+})
 
-$profileSids = $profileEntries | Where-Object {
+$profileSids = @($profileEntries | Where-Object {
     $_.Sid -match '^S-1-5-21-' -and
     $_.ProfilePath -and
     (Test-Path -Path $_.ProfilePath)
-}
+})
 
-$skippedProfiles = $profileEntries | Where-Object {
+$skippedProfiles = @($profileEntries | Where-Object {
     $_.Sid -match '^S-1-5-21-' -and
     (-not $_.ProfilePath -or -not (Test-Path -Path $_.ProfilePath))
-}
+})
 
 foreach ($skipped in $skippedProfiles) {
     Write-Log "Skipped SID $($skipped.Sid) because profile path was not accessible: $($skipped.RawProfilePath)" 'WARN'
@@ -385,7 +385,7 @@ foreach ($skipped in $skippedProfiles) {
 Write-Log "Discovered $($profileSids.Count) local user profiles to process"
 
 foreach ($entry in $profileSids) {
-    Process-UserHivePolicy -Sid $entry.Sid -ProfilePath $entry.ProfilePath -BackupDir $backupDir
+    Invoke-UserHivePolicy -Sid $entry.Sid -ProfilePath $entry.ProfilePath -BackupDir $backupDir
 }
 
 Backup-And-RenameLocalGpoFiles -BackupDir $backupDir
