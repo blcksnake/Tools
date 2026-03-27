@@ -8,7 +8,8 @@ These tools are designed to help techs diagnose, fix, and prevent common issues 
 - powershell/ - Windows automation, diagnostics, inventory, cleanup
 - python/ - Cross-platform utilities, parsing, API helpers
 - batch/ - Legacy or quick-fix scripts
-- modules/ - Reusable functions and libraries
+- modules/ - Reusable functions and libraries (PowerShell/ and Python/)
+- logs/examples/ - Sample logs for troubleshooting references
 - docs/ - Usage guides and examples
 
 ## Usage
@@ -20,12 +21,7 @@ Each script folder should include:
 - How to run it
 - Example output
 
-## Example Script Package
 
-Fix-TaskManagerPolicy/
-|-- Fix-TaskManagerPolicy.ps1
-|-- README.md
-|-- LICENSE (optional - only if different from repo license)
 
 ## Contributions
 
